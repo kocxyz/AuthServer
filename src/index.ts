@@ -21,7 +21,7 @@ const pages = {
 }
 
 const app = express();
-app.use(express.static('www'));
+app.use(express.json());
 
 let codes: types.codes = {};
 let keys: types.keys = {};
@@ -109,7 +109,7 @@ app.post('/auth/login/', async (req, res) => {
 
     const localUser = await prisma.users.findFirst({
         where: {
-            id: parseInt(user.id)
+            id: BigInt(user.id)
         }
     });
 
@@ -121,7 +121,7 @@ app.post('/auth/login/', async (req, res) => {
         } as types.authError);
     }
 
-    if(localUser.id !== BigInt(parseInt(user.id))) return res.status(400).send({
+    if(localUser.id !== BigInt(user.id)) return res.status(400).send({
         type: "invalid_account",
         message: "The code provided was invalid"
     } as types.authError), console.log(`User ${user.username}#${user.discriminator} (${user.id}) tried to login but the code was invalid`);
@@ -179,7 +179,7 @@ app.post('/auth/register/', async (req, res) => {
     const { user } = codes[parseInt(code as string)];
 
     const localUser = await prisma.users.findFirst({
-        where: { id: parseInt(user.id) }
+        where: { id: BigInt(user.id) }
     });
 
     if (localUser) {
@@ -202,7 +202,7 @@ app.post('/auth/register/', async (req, res) => {
     let authToken = crypto.randomBytes(16).toString('hex');
     await prisma.users.create({
         data: {
-            id: parseInt(user.id),
+            id: BigInt(user.id),
             username: username,
             registeredat: new Date(),
             lastlogin: new Date(),
@@ -333,7 +333,7 @@ app.get('/stats/user/:id', async (req, res) => {
     } as types.authError);
 
     let user = await prisma.users.findFirst({
-        where: { id: parseInt(id) },
+        where: { id: BigInt(id) },
         select: {
             id: true,
             username: true,
@@ -349,7 +349,7 @@ app.get('/stats/user/:id', async (req, res) => {
     console.log(`User requested stats for user ${user.username} (${user.id})`);
 
     const ownedServers = await prisma.servers.findMany({
-        where: { owner: parseInt(id) },
+        where: { owner: BigInt(id) },
         select: {
             id: true,
             status: true,
