@@ -10,7 +10,7 @@ This is not an actively supported software. It is only here to disclose the inne
 
 ### Requirements
 
-- A MySQL database (preferably PostgreSQL)
+- A PostgreSQL database
 - NodeJS LTS
 
 ### Setup
