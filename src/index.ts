@@ -407,9 +407,18 @@ app.get("/stats/user/username/:username", async (req, res) => {
         }
     });
 
+    // convert BigInt to string
+
+
     return res.send({
-        ...user,
+        user: {
+            id: user.id.toString(),
+            username: user.username,
+            registeredat: user.registeredat,
+            lastlogin: user.lastlogin
+        },
         ownedServers: ownedServers.map((server: any) => {
+            server.owner = server.owner.toString();
             server.players = server.status == 'online' ? servers.find((x: types.server) => x.id == server.id)?.players || 0 : 0;
             server.maxPlayers = server.status == 'online' ? servers.find((x: types.server) => x.id == server.id)?.maxPlayers || 0 : 0;
             return server;
