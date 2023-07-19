@@ -324,7 +324,7 @@ app.get('/stats/servers/', (req, res) => {
     }));
 })
 
-app.get('/stats/user/:id', async (req, res) => {
+app.get('/stats/user/id/:id', async (req, res) => {
     const { id } = req.params;
 
     if(!id) return res.status(400).send({
@@ -350,6 +350,53 @@ app.get('/stats/user/:id', async (req, res) => {
 
     const ownedServers = await prisma.servers.findMany({
         where: { owner: BigInt(id) },
+        select: {
+            id: true,
+            status: true,
+            name: true,
+            ip: true,
+            region: true,
+            owner: true
+        }
+    });
+
+    return res.send({
+        ...user,
+        ownedServers: ownedServers.map((server: any) => {
+            server.players = server.status == 'online' ? servers.find((x: types.server) => x.id == server.id)?.players || 0 : 0;
+            server.maxPlayers = server.status == 'online' ? servers.find((x: types.server) => x.id == server.id)?.maxPlayers || 0 : 0;
+            return server;
+        })
+    } as unknown as types.userStats);
+})
+
+app.get("/stats/user/username/:username", async (req, res) => {
+    const { username } = req.params;
+
+    if(!username) return res.status(400).send({
+        type: "invalid_account",
+        message: "No username was provided"
+    } as types.authError);
+
+    let user = await prisma.users.findFirst({
+        where: { username: username },
+        select: {
+            id: true,
+            username: true,
+            registeredat: true,
+            lastlogin: true
+        }
+    });
+
+    if(!user) return res.status(400).send({
+        type: "invalid_account",
+        message: "User does not exist"
+    } as types.authError);
+
+    console.log(`User requested stats for user ${user.username} (${user.id})`);
+
+    const ownedServers = await prisma.servers.findMany({
+        where: { owner: BigInt(user.id) },
         select: {
             id: true,
             status: true,
