@@ -190,7 +190,7 @@ app.post('/auth/register/', async (req, res) => {
         } as types.authError);
     }
 
-    if(functions.checkUsername(username, codes[parseInt(code as string)].user, res)) return;
+    if(!functions.checkUsername(username, codes[parseInt(code as string)].user, res)) return console.log(`User ${user.username}#${user.discriminator} (${user.id}) tried to register with username ${username} but it was invalid`)
 
     if(await prisma.users.findFirst({
         where: { username: username } 
@@ -310,7 +310,6 @@ app.get('/web/discord/', (req, res) => {
 })
 
 app.get('/stats/servers/', (req, res) => {
-    console.log(`User requested server stats`);
     res.send(servers.map((server: types.server) => {
         return {
             id: server.id,
