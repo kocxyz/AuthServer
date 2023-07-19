@@ -396,7 +396,7 @@ app.get("/stats/user/username/:username", async (req, res) => {
     console.log(`User requested stats for user ${user.username} (${user.id})`);
 
     const ownedServers = await prisma.servers.findMany({
-        where: { owner: BigInt(user.id) },
+        where: { owner: user.id },
         select: {
             id: true,
             status: true,
