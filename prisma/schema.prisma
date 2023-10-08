@@ -51,6 +51,7 @@ model users {
   banned       Boolean          @default(false)
   premium      Int              @default(0)
   color        String?          @db.VarChar(7)
+  playtime     Int              @default(0)
   servers      user_on_server[]
 
   @@map("users")

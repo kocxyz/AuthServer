@@ -420,15 +420,14 @@ app.get('/stats/user/id/:id', async (req, res) => {
             registeredat: true,
             lastlogin: true,
             premium: true,
-            color: true
+            color: true,
+            playtime: true
         }
     });
     if(!user) return res.status(400).send({
         type: "invalid_account",
         message: "User does not exist"
     } satisfies types.authError);
-
-    console.log(`User requested stats for user ${user.username} (${user.id})`);
 
     const ownedServers = await prisma.servers.findMany({
         where: { owner: BigInt(id) },
@@ -448,7 +447,9 @@ app.get('/stats/user/id/:id', async (req, res) => {
             username: user.username,
             registeredat: user.registeredat,
             lastlogin: user.lastlogin,
-            color: user.premium === 3 ? (user.color || undefined) : undefined
+            premium: user.premium,
+            color: user.premium === 3 ? (user.color || undefined) : undefined,
+            playtime: user.playtime
         },
         ownedServers: ownedServers.map((server: any) => {
             server.owner = server.owner.toString();
@@ -475,7 +476,8 @@ app.get("/stats/user/username/:username", async (req, res) => {
             registeredat: true,
             lastlogin: true,
             premium: true,
-            color: true
+            color: true,
+            playtime: true
         }
     });
 
@@ -483,8 +485,6 @@ app.get("/stats/user/username/:username", async (req, res) => {
         type: "invalid_account",
         message: "User does not exist"
     } as types.authError);
-
-    console.log(`User requested stats for user ${user.username} (${user.id})`);
 
     const ownedServers = await prisma.servers.findMany({
         where: { owner: user.id },
@@ -508,7 +508,8 @@ app.get("/stats/user/username/:username", async (req, res) => {
             registeredat: user.registeredat,
             lastlogin: user.lastlogin,
             premium: user.premium,
-            color: user.premium === 3 ? (user.color || undefined) : undefined
+            color: user.premium === 3 ? (user.color || undefined) : undefined,
+            playtime: user.playtime
         },
         ownedServers: ownedServers.map((server: any) => {
             server.owner = server.owner.toString();
@@ -605,6 +606,70 @@ app.post("/stats/user/username/:username/setColor", async (req, res) => {
      }
 });
 
+const playtimeCooldowns: Map<string, number> = new Map();
+
+app.post("/stats/user/username/:username/playtime", async (req, res) => {
+    try {
+        const { username } = req.params;
+        const token = req.headers.authorization?.split(' ')[1];
+    
+        if(!username || !token) return res.status(400).send({
+            type: "invalid_account",
+            message: "No credentials were provided"
+        } as types.authError);
+    
+        let user = await prisma.users.findFirst({
+            where: { username: username },
+            select: {
+                id: true,
+                authtoken: true,
+                username: true,
+                registeredat: true,
+                lastlogin: true,
+                premium: true,
+            }
+        });
+    
+        if(!user) return res.status(400).send({
+            type: "invalid_account",
+            message: "User does not exist"
+        } as types.authError);
+
+        if(user.authtoken !== token) return res.status(403).send({
+            type: "invalid_token",
+            message: "Invalid auth token, try relogging in the settings tab"
+        } as types.authError);
+
+        console.log(Date.now() - (playtimeCooldowns.get(username) ?? 0))
+
+        if(playtimeCooldowns.has(username) && (Date.now() - (playtimeCooldowns.get(username) ?? 0)) < 1000 * 55) return res.status(429).send({
+            type: "cooldown",
+            message: "Playtime requests are only allowed once per minute"
+        } as types.authError);
+
+        playtimeCooldowns.set(username, Date.now());
+
+        await prisma.users.update({
+            where: {
+                id: user.id
+            },
+            data: {
+                playtime: {
+                    increment: 1
+                }
+            }
+        });
+    
+        return res.send('OK');
+    } catch (error) {
+        console.log(error);
+        return res.status(500).send({
+            type: "internal_error",
+            message: "Something went wrong while trying to set playtime"
+        } as types.authError);
+     }
+});
+
 // clear codes and keys every 10 minutes
 setInterval(() => {
     for (let code in codes) {
@@ -615,6 +680,11 @@ setInterval(() => {
         if (Date.now() - keys[key].created > 1000 * 60 * 5) delete keys[key];
     }
 }, 1000 * 60 * 10);
+
+// Clear the playtime cooldowns every 24 hours
+setInterval(() => {
+    playtimeCooldowns.clear();
+}, 1000 * 60 * 60 * 24);
 
 setInterval(functions.checkServers, 1000 * 30);
 functions.checkServers();
