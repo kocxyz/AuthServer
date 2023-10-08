@@ -118,7 +118,21 @@ export async function checkServers(): Promise<void> {
                 }
             })
         }
-        else {
+        else if(status.data.version !== "3.0.0") {
+            servers[serverIndex].status = "deprecated";
+            servers[serverIndex].players = status.data.connections;
+            servers[serverIndex].maxPlayers = status.data.maxConnections;
+
+            await prisma.servers.update({
+                where: {
+                    id: server.id
+                },
+                data: {
+                    status: "deprecated",
+                    maxplayers: status.data.maxConnections
+                }
+            })
+        } else {
             if(server.status != "online") console.log(`Server status of ${server.name} (${server.ip}) changed to online`);
             servers[serverIndex].status = "online";
             servers[serverIndex].players = status.data.connections;

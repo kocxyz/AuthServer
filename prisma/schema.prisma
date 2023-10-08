@@ -29,21 +29,41 @@ model keys {
 }
 
 model servers {
-  id         Int     @id @unique(map: "id")
+  id         Int              @id @unique(map: "id")
   status     String?
   name       String
   ip         String
   region     String?
-  maxplayers Int?    @default(0)
+  maxplayers Int?             @default(0)
   owner      BigInt?
+  members    user_on_server[]
+
+  @@map("servers")
 }
 
 model users {
-  id           BigInt    @id
+  id           BigInt           @id
   username     String
-  registeredat DateTime? @db.Timestamp(6)
-  lastlogin    DateTime? @db.Timestamp(6)
-  tokencreated DateTime? @db.Timestamp(6)
+  registeredat DateTime?        @db.Timestamp(6)
+  lastlogin    DateTime?        @db.Timestamp(6)
+  tokencreated DateTime?        @db.Timestamp(6)
   authtoken    String?
-  banned       Boolean   @default(false)
+  banned       Boolean          @default(false)
+  premium      Int              @default(0)
+  color        String?          @db.VarChar(7)
+  servers      user_on_server[]
+
+  @@map("users")
+}
+
+model user_on_server {
+  serverID Int
+  userID   BigInt
+  velanID  BigInt
+  server   servers @relation(fields: [serverID], references: [id])
+  user     users   @relation(fields: [userID], references: [id])
+
+  @@id([serverID, userID, velanID], map: "server_members_pkey1")
+  @@unique([serverID, userID, velanID], map: "server_members_pkey")
+  @@map("server_members")
 }

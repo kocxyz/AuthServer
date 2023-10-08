@@ -48,7 +48,7 @@ app.use((req, res, next) => {
         return res.status(429).send({
             type: "too_many_requests",
             message: "You have made too many requests, please try again later"
-        } as types.authError);
+        } satisfies types.authError);
     }
 
     next();
@@ -160,8 +160,10 @@ app.post('/auth/login/', async (req, res) => {
 
     return res.send({
         username: localUser.username,
-        authToken: localUser.authtoken
-    } as types.authSuccess);
+        authToken: localUser.authtoken,
+        premium: localUser.premium,
+        usernameColor: localUser.premium === 3 ? (localUser.color || undefined) : undefined
+    } satisfies types.authSuccess);
 });
 
 app.post('/auth/register/', async (req, res) => {
@@ -170,11 +172,11 @@ app.post('/auth/register/', async (req, res) => {
     if(!code) return res.status(400).send({
         type: "no_code",
         message: "No code was provided"
-    } as types.authError);
+    } satisfies types.authError);
     if(!codes[parseInt(code as string)]) return res.status(400).send({
         type: "invalid_code",
         message: "The code provided is invalid"
-    } as types.authError);
+    } satisfies types.authError);
 
     const { user } = codes[parseInt(code as string)];
 
@@ -187,7 +189,7 @@ app.post('/auth/register/', async (req, res) => {
         return res.status(409).send({
             type: "account_exists",
             message: "An account already exists for this user"
-        } as types.authError);
+        } satisfies types.authError);
     }
 
     if(!functions.checkUsername(username, codes[parseInt(code as string)].user, res)) return console.log(`User ${user.username}#${user.discriminator} (${user.id}) tried to register with username ${username} but it was invalid`)
@@ -197,7 +199,7 @@ app.post('/auth/register/', async (req, res) => {
     })) return res.status(409).send({
         type: "username_taken",
         message: "This username is already taken"
-    } as types.authError);
+    } satisfies types.authError);
 
     let authToken = crypto.randomBytes(16).toString('hex');
     await prisma.users.create({
@@ -217,8 +219,9 @@ app.post('/auth/register/', async (req, res) => {
 
     return res.send({
         username: username,
-        authToken: authToken
-    } as types.authSuccess);
+        authToken: authToken,
+        premium: 0
+    } satisfies types.authSuccess);
 });
 
 app.post('/auth/getkey/', async (req, res) => {
@@ -258,10 +261,12 @@ app.post('/auth/getkey/', async (req, res) => {
 
     setTimeout(() => {
         keys[authkey as string] = {
+            id: localUser.id,
             username: localUser.username,
             authToken: localUser.authtoken as string,
             server: server,
-            created: Date.now()
+            created: Date.now(),
+            color: localUser.premium === 3 ? (localUser.color || undefined) : undefined
         }
 
         console.log(`User ${localUser.username} generated a key for server ${server}`);
@@ -273,12 +278,16 @@ app.post('/auth/getkey/', async (req, res) => {
 });
 
 app.post('/auth/validate/', async (req, res) => {
-    const { authkey, server } = req.body;
+    const { authkey, server } = req.body as {
+        authkey: string,
+        server: string,
+        keepKey?: boolean
+    };
 
     if(!authkey || !server) return res.status(400).send({
         type: "missing_data",
         message: "Missing auth key or server"
-    } as types.authError);
+    } satisfies types.authError);
 
     console.log(`A user ${server} is trying to authenticate`);
 
@@ -287,19 +296,91 @@ app.post('/auth/validate/', async (req, res) => {
     if(!keyData) return res.status(403).send({
         type: "invalid_key",
         message: "The auth key provided is invalid"
-    } as types.authError);
+    } satisfies types.authError);
 
     if(keyData.server !== server) return res.status(403).send({
         type: "invalid_server",
         message: "The server ip does not match the one used to generate the key"
-    } as types.authError);
+    } satisfies types.authError);
 
-    delete keys[authkey as string];
+    const serverData = servers.find((x: types.server) => x.ip == keyData.server);
+    if(!serverData) {
+        res.status(400).send({
+            type: "invalid_server",
+            message: "The server is not part of the server list"
+        } satisfies types.authError);
+
+        return console.log(`User ${keyData.username} authenticated on server ${server} but the server was not found`);
+    }
+
+    const userConnected = await prisma.user_on_server.findFirst({
+        where: {
+            serverID: serverData.id,
+            userID: BigInt(keyData.id)
+        }
+    });
+
+    if(userConnected) delete keys[authkey as string];
     console.log(`User ${keyData.username} authenticated on server ${server}`);
-
+    
     return res.send({
         username: keyData.username,
-    } as types.keyValidationSuccess);
+        color: keyData.color,
+        velanID: Number(userConnected?.velanID)
+    } satisfies types.keyValidationSuccess);
+});
+
+app.post('/auth/connect' , async (req, res) => {
+    const { authkey, server, velanID } = req.body as {
+        authkey: string,
+        server: string,
+        velanID: string
+    };
+    if(!authkey || !server || !velanID) return res.status(400).send({
+        type: "missing_data",
+        message: "Missing authkey or velanID"
+    } satisfies types.authError);
+    
+    let keyData = keys[authkey as string];
+
+    if(!keyData) return res.status(403).send({
+        type: "invalid_key",
+        message: "The auth key provided is invalid"
+    } satisfies types.authError);
+
+    if(keyData.server !== server) return res.status(403).send({
+        type: "invalid_server",
+        message: "The server ip does not match the one used to generate the key"
+    } satisfies types.authError);
+
+    const serverData = servers.find((x: types.server) => x.ip == keyData.server);
+    if(!serverData) {
+        res.status(400).send({
+            type: "invalid_server",
+            message: "The server is not part of the server list"
+        } satisfies types.authError);
+
+        return console.log(`User ${keyData.username} authenticated on server ${server} but the server was not found`);
+    }
+
+    await prisma.user_on_server.upsert({
+        create: {
+            serverID: serverData.id,
+            velanID: BigInt(velanID),
+            userID: BigInt(keyData.id)
+        }, 
+        update: {},
+        where: {
+            serverID_userID_velanID: {
+                serverID: serverData.id,
+                velanID: BigInt(velanID),
+                userID: BigInt(keyData.id)
+            }
+        }
+    });
+
+    console.log(`User ${keyData.username} connected to server ${server}`);
+    return res.send('OK');
 });
 
 app.get('/web/discord/', (req, res) => {
@@ -329,7 +410,7 @@ app.get('/stats/user/id/:id', async (req, res) => {
     if(!id) return res.status(400).send({
         type: "invalid_account",
         message: "Missing user id"
-    } as types.authError);
+    } satisfies types.authError);
 
     let user = await prisma.users.findFirst({
         where: { id: BigInt(id) },
@@ -337,13 +418,15 @@ app.get('/stats/user/id/:id', async (req, res) => {
             id: true,
             username: true,
             registeredat: true,
-            lastlogin: true
+            lastlogin: true,
+            premium: true,
+            color: true
         }
     });
     if(!user) return res.status(400).send({
         type: "invalid_account",
         message: "User does not exist"
-    } as types.authError);
+    } satisfies types.authError);
 
     console.log(`User requested stats for user ${user.username} (${user.id})`);
 
@@ -364,7 +447,8 @@ app.get('/stats/user/id/:id', async (req, res) => {
             id: user.id.toString(),
             username: user.username,
             registeredat: user.registeredat,
-            lastlogin: user.lastlogin
+            lastlogin: user.lastlogin,
+            color: user.premium === 3 ? (user.color || undefined) : undefined
         },
         ownedServers: ownedServers.map((server: any) => {
             server.owner = server.owner.toString();
@@ -389,7 +473,9 @@ app.get("/stats/user/username/:username", async (req, res) => {
             id: true,
             username: true,
             registeredat: true,
-            lastlogin: true
+            lastlogin: true,
+            premium: true,
+            color: true
         }
     });
 
@@ -420,7 +506,9 @@ app.get("/stats/user/username/:username", async (req, res) => {
             id: user.id.toString(),
             username: user.username,
             registeredat: user.registeredat,
-            lastlogin: user.lastlogin
+            lastlogin: user.lastlogin,
+            premium: user.premium,
+            color: user.premium === 3 ? (user.color || undefined) : undefined
         },
         ownedServers: ownedServers.map((server: any) => {
             server.owner = server.owner.toString();
@@ -430,6 +518,92 @@ app.get("/stats/user/username/:username", async (req, res) => {
         })
     } as unknown as types.userStats);
 })
+
+const colors = [
+    null,
+    '#B80000',
+    '#DB3E00',
+    '#FCCB00',
+    '#008B02',
+    '#006B76',
+    '#1273DE',
+    '#004DCF',
+    '#5300EB',
+    '#E638bb',
+  
+    '#49313e',
+    '#2e7b15',
+    '#33eebd',
+    '#55fed4',
+    '#81a7f6',
+    '#f7a9e7',
+    '#860ae9',
+    '#f3b17d'
+]
+
+app.post("/stats/user/username/:username/setColor", async (req, res) => {
+    try {
+        const { username } = req.params;
+        const { color, token } = req.body;
+    
+        if(!username || !color || !token) return res.status(400).send({
+            type: "invalid_account",
+            message: "No credentials or color was provided"
+        } as types.authError);
+    
+        let user = await prisma.users.findFirst({
+            where: { username: username },
+            select: {
+                id: true,
+                authtoken: true,
+                username: true,
+                registeredat: true,
+                lastlogin: true,
+                premium: true
+            }
+        });
+    
+        if(!user) return res.status(400).send({
+            type: "invalid_account",
+            message: "User does not exist"
+        } as types.authError);
+
+        if(user.authtoken !== token) return res.status(403).send({
+            type: "invalid_token",
+            message: "Invalid auth token, try relogging in the settings tab"
+        } as types.authError);
+    
+        if(user.premium !== 3) return res.status(403).send({
+            type: "not_premium",
+            message: "Sorry, this feature is only available to patrons"
+        } as types.authError);
+    
+        if(parseInt(color) > colors.length || parseInt(color) < 0) return res.status(400).send({
+            type: "invalid_color",
+            message: "Invalid color"
+        } as types.authError);
+    
+        await prisma.users.update({
+            where: {
+                id: user.id
+            },
+            data: {
+                color: colors[parseInt(color)]
+            }
+        });
+    
+        return res.send({
+            username: user.username,
+            color: colors[parseInt(color)]
+        });
+    } catch (error) {
+        console.log(error);
+        return res.status(500).send({
+            type: "internal_error",
+            message: "Something went wrong while trying to set the color"
+        } as types.authError);
+     }
+});
 
 // clear codes and keys every 10 minutes
 setInterval(() => {

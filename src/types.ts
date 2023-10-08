@@ -1,7 +1,7 @@
 import { User as DiscordOAuthUser } from 'discord-oauth2'
 
 export type ip = string;
-export type serverStatus = 'online' | 'offline' | 'unknown';
+export type serverStatus = 'online' | 'offline' | 'deprecated' | 'unknown';
 export type serverRegion = 'NA' | 'EU' | 'ASIA' | 'SA' | 'AU' | 'UNKNOWN';
 
 /** Interface representing cooldowns for each IP address */
@@ -13,6 +13,8 @@ export interface cooldowns {
 export interface authSuccess {
     username: string;
     authToken: string;
+    premium: number;
+    usernameColor?: string;
 }
 
 /** Represents a successful authkey response */
@@ -23,6 +25,8 @@ export interface authKeySuccess {
 /** Represents a successful key validation */
 export interface keyValidationSuccess {
     username: string;
+    color?: string;
+    velanID?: number;
 }
 
 /** Represents an error sent to the client. */
@@ -46,10 +50,12 @@ export interface keys { [key: string]: key; }
 
 /** Represents a key. */
 export interface key {
+    id: bigint;
     username: string;
     authToken: string;
     server: ip;
     created: number;
+    color?: string;
 }
 
 /** Represents a server. */
