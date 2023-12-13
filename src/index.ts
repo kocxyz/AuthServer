@@ -547,7 +547,7 @@ app.post("/stats/user/username/:username/setColor", async (req, res) => {
         const { username } = req.params;
         const { color, token } = req.body;
     
-        if(!username || !color || !token) return res.status(400).send({
+        if(!username || color === undefined || !token) return res.status(400).send({
             type: "invalid_account",
             message: "No credentials or color was provided"
         } as types.authError);
