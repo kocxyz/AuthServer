@@ -1,11 +1,16 @@
 import express from 'express';
 import fs from 'fs';
-import axios from 'axios';
 import crypto from 'crypto';
 import DiscordOauth2 from 'discord-oauth2';
 import { PrismaClient } from '@prisma/client'
 import * as types from './types';
+import Knex from 'knex';
 require('dotenv').config();
+
+const botdb = Knex({
+    client: 'pg',
+    connection: process.env.BOTDATABASE_URL,
+});
 
 const oauth = new DiscordOauth2({
     clientId: process.env.CLIENTID,
@@ -402,6 +407,12 @@ app.get('/stats/servers/', (req, res) => {
             maxPlayers: server.status == 'online' && server.maxPlayers ? server.maxPlayers : 0
         }
     }));
+})
+
+app.get('/stats/cs', async (req, res) => {
+    const csmembers = await botdb('CSMember').select('*');
+
+    return res.send(csmembers.sort((a, b) => b.priority - a.priority))
 })
 
 app.get('/stats/user/id/:id', async (req, res) => {
