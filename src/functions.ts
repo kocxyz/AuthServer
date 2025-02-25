@@ -97,7 +97,7 @@ export async function checkServers(): Promise<void> {
             servers.push(server)
         }
         let status = await axios.get(`http://${server.ip}/stats/status`, {
-        	timeout: 2000,
+                timeout: 2000,
         }).catch(() => null);
 
         let serverIndex = servers.findIndex(x => x.id == server.id);
@@ -118,7 +118,7 @@ export async function checkServers(): Promise<void> {
                 }
             })
         }
-        else if(status.data.version !== "3.0.0") {
+        else if(status.data.version !== "3.2.0") {
             servers[serverIndex].status = "deprecated";
             servers[serverIndex].players = status.data.connections;
             servers[serverIndex].maxPlayers = status.data.maxConnections;
