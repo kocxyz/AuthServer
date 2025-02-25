@@ -1,16 +1,11 @@
 import express from 'express';
 import fs from 'fs';
+import axios from 'axios';
 import crypto from 'crypto';
 import DiscordOauth2 from 'discord-oauth2';
 import { PrismaClient } from '@prisma/client'
 import * as types from './types';
-import Knex from 'knex';
 require('dotenv').config();
-
-const botdb = Knex({
-    client: 'pg',
-    connection: process.env.BOTDATABASE_URL,
-});
 
 const oauth = new DiscordOauth2({
     clientId: process.env.CLIENTID,
@@ -40,21 +35,24 @@ app.use((req, res, next) => {
     res.header('Access-Control-Allow-Origin', '*');
     res.header("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept");
 
-    // Get the IP address of the user.
-    const ip: types.ip = (req.headers['x-forwarded-for'] as string) || (req.socket.remoteAddress as string);
+    // var fullPath = req.baseUrl + req.path;
+    // if(fullPath == "/auth/validate/") return next();
 
-    // check if the IP address is in the cooldowns list.
-    if(cooldowns[ip]) cooldowns[ip]++;
-    else cooldowns[ip] = 1;
+    // // Get the IP address of the user.
+    // const ip: types.ip = (req.headers['x-forwarded-for'] as string) || (req.socket.remoteAddress as string);
 
-    // If the IP address has been used more than SPAMCUTOFF times, deny the request.
-    if(cooldowns[ip] > parseInt(process.env.SPAMCUTOFF as string)) {
-        console.log(`Blocked IP ${ip} for making too many requests`);
-        return res.status(429).send({
-            type: "too_many_requests",
-            message: "You have made too many requests, please try again later"
-        } satisfies types.authError);
-    }
+    // // check if the IP address is in the cooldowns list.
+    // if(cooldowns[ip]) cooldowns[ip]++;
+    // else cooldowns[ip] = 1;
+
+    // // If the IP address has been used more than SPAMCUTOFF times, deny the request.
+    // if(cooldowns[ip] > parseInt(process.env.SPAMCUTOFF as string)) {
+    //     console.log(`Blocked IP ${ip} for making too many requests`);
+    //     return res.status(429).send({
+    //         type: "too_many_requests",
+    //         message: "You have made too many requests, please try again later"
+    //     } satisfies types.authError);
+    // }
 
     next();
 });
@@ -409,12 +407,6 @@ app.get('/stats/servers/', (req, res) => {
     }));
 })
 
-app.get('/stats/cs', async (req, res) => {
-    const csmembers = await botdb('CSMember').select('*');
-
-    return res.send(csmembers.sort((a, b) => b.priority - a.priority))
-})
-
 app.get('/stats/user/id/:id', async (req, res) => {
     const { id } = req.params;
 
@@ -650,8 +642,6 @@ app.post("/stats/user/username/:username/playtime", async (req, res) => {
             type: "invalid_token",
             message: "Invalid auth token, try relogging in the settings tab"
         } as types.authError);
-
-        console.log(Date.now() - (playtimeCooldowns.get(username) ?? 0))
 
         if(playtimeCooldowns.has(username) && (Date.now() - (playtimeCooldowns.get(username) ?? 0)) < 1000 * 55) return res.status(429).send({
             type: "cooldown",
