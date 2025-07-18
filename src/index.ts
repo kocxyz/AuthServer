@@ -5,7 +5,16 @@ import crypto from 'crypto';
 import DiscordOauth2 from 'discord-oauth2';
 import { PrismaClient } from '@prisma/client'
 import * as types from './types';
+import * as Sentry from "@sentry/node"
 require('dotenv').config();
+
+Sentry.init({
+  dsn: "https://80e91c20dd83ad6d8e6d59109d43d9d7@sentry.ipmake.dev/4",
+
+  // Setting this option to true will send default PII data to Sentry.
+  // For example, automatic IP address collection on events
+  sendDefaultPii: true,
+});
 
 const oauth = new DiscordOauth2({
     clientId: process.env.CLIENTID,
@@ -670,6 +679,8 @@ app.post("/stats/user/username/:username/playtime", async (req, res) => {
         } as types.authError);
      }
 });
+
+Sentry.setupExpressErrorHandler(app);
 
 // clear codes and keys every 10 minutes
 setInterval(() => {
