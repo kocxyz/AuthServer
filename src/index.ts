@@ -1,20 +1,11 @@
 import express from 'express';
 import fs from 'fs';
-import axios from 'axios';
 import crypto from 'crypto';
 import DiscordOauth2 from 'discord-oauth2';
 import { PrismaClient } from '@prisma/client'
 import * as types from './types';
 import * as Sentry from "@sentry/node"
 require('dotenv').config();
-
-Sentry.init({
-  dsn: "https://80e91c20dd83ad6d8e6d59109d43d9d7@sentry.ipmake.dev/4",
-
-  // Setting this option to true will send default PII data to Sentry.
-  // For example, automatic IP address collection on events
-  sendDefaultPii: true,
-});
 
 const oauth = new DiscordOauth2({
     clientId: process.env.CLIENTID,
@@ -34,7 +25,9 @@ app.use(express.json());
 
 let codes: types.codes = {};
 let keys: types.keys = {};
-let servers: types.server[] = [];
+let servers: {
+    list: types.server[];
+} = { list: [] };
 let cooldowns: types.cooldowns = {};
 export { codes, keys, servers, prisma };
 
@@ -72,8 +65,8 @@ setInterval(() => {
 
 app.get('/', async (req, res) => {
     const { code, error_description } = req.query;
-    if(!code) {
-        if(!req.query.error_description) return res.status(400).send(pages.deniedPage.replace("%LOGIN_ERROR%", "An unexpected error occured"))
+    if (!code) {
+        if (!req.query.error_description) return res.status(400).send(pages.deniedPage.replace("%LOGIN_ERROR%", "An unexpected error occured"))
         return res.status(400).send(pages.deniedPage.replace("%LOGIN_ERROR%", (error_description as string).replace("+", " ")));
     }
 
@@ -84,15 +77,15 @@ app.get('/', async (req, res) => {
     }).catch(() => {
         return res.redirect('/web/discord')
     });
-    if(!token?.access_token) return
+    if (!token?.access_token) return
 
     const user = await oauth.getUser(token.access_token).catch(() => {
         return res.redirect('/web/discord')
     });
-    if(!user) return
+    if (!user) return
 
     const loginCode = functions.generateCode();
-    if(!loginCode) return res.status(500).send(pages.deniedPage.replace("%LOGIN_ERROR%", "There was an error generating a login code, please try again later"));
+    if (!loginCode) return res.status(500).send(pages.deniedPage.replace("%LOGIN_ERROR%", "There was an error generating a login code, please try again later"));
 
     codes[loginCode] = {
         token: token.access_token,
@@ -108,11 +101,11 @@ app.get('/', async (req, res) => {
 app.post('/auth/login/', async (req, res) => {
     const { code } = req.body;
 
-    if(!code) return res.status(400).send({
+    if (!code) return res.status(400).send({
         type: "no_code",
         message: "No code was provided"
     } as types.authError);
-    if(!codes[parseInt(code as string)]) return res.status(400).send({
+    if (!codes[parseInt(code as string)]) return res.status(400).send({
         type: "invalid_code",
         message: "The code provided is invalid"
     } as types.authError);
@@ -133,17 +126,17 @@ app.post('/auth/login/', async (req, res) => {
         } as types.authError);
     }
 
-    if(localUser.id !== BigInt(user.id)) return res.status(400).send({
+    if (localUser.id !== BigInt(user.id)) return res.status(400).send({
         type: "invalid_account",
         message: "The code provided was invalid"
     } as types.authError), console.log(`User ${user.username}#${user.discriminator} (${user.id}) tried to login but the code was invalid`);
 
-    if(localUser.banned) return res.status(403).send({
+    if (localUser.banned) return res.status(403).send({
         type: "terminated_account",
         message: "This account has been terminated"
     } as types.authError), console.log(`User ${user.username}#${user.discriminator} (${user.id}) tried to login but they were banned`);
 
-    if(!localUser.authtoken || !localUser.tokencreated || Date.now() - Date.parse(localUser.tokencreated.toString()) > 1000 * 60 * 60 * 24 * 7) {
+    if (!localUser.authtoken || !localUser.tokencreated || Date.now() - Date.parse(localUser.tokencreated.toString()) > 1000 * 60 * 60 * 24 * 7) {
         localUser.authtoken = crypto.randomBytes(16).toString('hex');
         await prisma.users.update({
             where: {
@@ -181,11 +174,11 @@ app.post('/auth/login/', async (req, res) => {
 app.post('/auth/register/', async (req, res) => {
     const { code, username } = req.body;
 
-    if(!code) return res.status(400).send({
+    if (!code) return res.status(400).send({
         type: "no_code",
         message: "No code was provided"
     } satisfies types.authError);
-    if(!codes[parseInt(code as string)]) return res.status(400).send({
+    if (!codes[parseInt(code as string)]) return res.status(400).send({
         type: "invalid_code",
         message: "The code provided is invalid"
     } satisfies types.authError);
@@ -204,10 +197,10 @@ app.post('/auth/register/', async (req, res) => {
         } satisfies types.authError);
     }
 
-    if(!functions.checkUsername(username, codes[parseInt(code as string)].user, res)) return console.log(`User ${user.username}#${user.discriminator} (${user.id}) tried to register with username ${username} but it was invalid`)
+    if (!functions.checkUsername(username, codes[parseInt(code as string)].user, res)) return console.log(`User ${user.username}#${user.discriminator} (${user.id}) tried to register with username ${username} but it was invalid`)
 
-    if(await prisma.users.findFirst({
-        where: { username: username } 
+    if (await prisma.users.findFirst({
+        where: { username: username }
     })) return res.status(409).send({
         type: "username_taken",
         message: "This username is already taken"
@@ -239,7 +232,7 @@ app.post('/auth/register/', async (req, res) => {
 app.post('/auth/getkey/', async (req, res) => {
     const { username, authToken, server } = req.body;
 
-    if(!username || !authToken || !server) return res.status(400).send({
+    if (!username || !authToken || !server) return res.status(400).send({
         type: "missing_data",
         message: "Missing username or auth token or server"
     } as types.authError);
@@ -250,23 +243,23 @@ app.post('/auth/getkey/', async (req, res) => {
         where: { username: username }
     });
 
-    if(!localUser) return res.status(400).send({
+    if (!localUser) return res.status(400).send({
         type: "no_user",
         message: "User does not exist"
     } as types.authError);
 
-    if(localUser.authtoken !== authToken) return res.status(403).send({
+    if (localUser.authtoken !== authToken) return res.status(403).send({
         type: "invalid_token",
         message: "Invalid auth token, try relogging in the settings tab"
     } as types.authError);
 
-    if(localUser.banned) return res.status(403).send({
+    if (localUser.banned) return res.status(403).send({
         type: "terminated_account",
         message: "This account has been terminated"
     } as types.authError), console.log(`User ${localUser.username} tried to login but they were banned`);
 
     let authkey = functions.generateKey();
-    if(!authkey || typeof authkey !== "string") return res.status(500).send({  
+    if (!authkey || typeof authkey !== "string") return res.status(500).send({
         type: "internal_error",
         message: "Something went wrong while trying to generate the auth key"
     } as types.authError);
@@ -296,7 +289,7 @@ app.post('/auth/validate/', async (req, res) => {
         keepKey?: boolean
     };
 
-    if(!authkey || !server) return res.status(400).send({
+    if (!authkey || !server) return res.status(400).send({
         type: "missing_data",
         message: "Missing auth key or server"
     } satisfies types.authError);
@@ -305,18 +298,18 @@ app.post('/auth/validate/', async (req, res) => {
 
     let keyData = keys[authkey as string];
 
-    if(!keyData) return res.status(403).send({
+    if (!keyData) return res.status(403).send({
         type: "invalid_key",
         message: "The auth key provided is invalid"
     } satisfies types.authError);
 
-    if(keyData.server !== server) return res.status(403).send({
+    if (keyData.server !== server) return res.status(403).send({
         type: "invalid_server",
         message: "The server ip does not match the one used to generate the key"
     } satisfies types.authError);
 
-    const serverData = servers.find((x: types.server) => x.ip == keyData.server);
-    if(!serverData) {
+    const serverData = servers.list.find((x: types.server) => x.ip == keyData.server);
+    if (!serverData) {
         res.status(400).send({
             type: "invalid_server",
             message: "The server is not part of the server list"
@@ -332,9 +325,9 @@ app.post('/auth/validate/', async (req, res) => {
         }
     });
 
-    if(userConnected) delete keys[authkey as string];
+    if (userConnected) delete keys[authkey as string];
     console.log(`User ${keyData.username} authenticated on server ${server}`);
-    
+
     return res.send({
         username: keyData.username,
         color: keyData.color,
@@ -342,31 +335,31 @@ app.post('/auth/validate/', async (req, res) => {
     } satisfies types.keyValidationSuccess);
 });
 
-app.post('/auth/connect' , async (req, res) => {
+app.post('/auth/connect', async (req, res) => {
     const { authkey, server, velanID } = req.body as {
         authkey: string,
         server: string,
         velanID: string
     };
-    if(!authkey || !server || !velanID) return res.status(400).send({
+    if (!authkey || !server || !velanID) return res.status(400).send({
         type: "missing_data",
         message: "Missing authkey or velanID"
     } satisfies types.authError);
-    
+
     let keyData = keys[authkey as string];
 
-    if(!keyData) return res.status(403).send({
+    if (!keyData) return res.status(403).send({
         type: "invalid_key",
         message: "The auth key provided is invalid"
     } satisfies types.authError);
 
-    if(keyData.server !== server) return res.status(403).send({
+    if (keyData.server !== server) return res.status(403).send({
         type: "invalid_server",
         message: "The server ip does not match the one used to generate the key"
     } satisfies types.authError);
 
-    const serverData = servers.find((x: types.server) => x.ip == keyData.server);
-    if(!serverData) {
+    const serverData = servers.list.find((x: types.server) => x.ip == keyData.server);
+    if (!serverData) {
         res.status(400).send({
             type: "invalid_server",
             message: "The server is not part of the server list"
@@ -380,7 +373,7 @@ app.post('/auth/connect' , async (req, res) => {
             serverID: serverData.id,
             velanID: BigInt(velanID),
             userID: BigInt(keyData.id)
-        }, 
+        },
         update: {},
         where: {
             serverID_userID_velanID: {
@@ -403,7 +396,7 @@ app.get('/web/discord/', (req, res) => {
 })
 
 app.get('/stats/servers/', (req, res) => {
-    res.send(servers.map((server: types.server) => {
+    res.send(servers.list.map((server: types.server) => {
         return {
             id: server.id,
             status: server.status,
@@ -419,7 +412,7 @@ app.get('/stats/servers/', (req, res) => {
 app.get('/stats/user/id/:id', async (req, res) => {
     const { id } = req.params;
 
-    if(!id) return res.status(400).send({
+    if (!id) return res.status(400).send({
         type: "invalid_account",
         message: "Missing user id"
     } satisfies types.authError);
@@ -436,7 +429,7 @@ app.get('/stats/user/id/:id', async (req, res) => {
             playtime: true
         }
     });
-    if(!user) return res.status(400).send({
+    if (!user) return res.status(400).send({
         type: "invalid_account",
         message: "User does not exist"
     } satisfies types.authError);
@@ -465,8 +458,8 @@ app.get('/stats/user/id/:id', async (req, res) => {
         },
         ownedServers: ownedServers.map((server: any) => {
             server.owner = server.owner.toString();
-            server.players = server.status == 'online' ? servers.find((x: types.server) => x.id == server.id)?.players || 0 : 0;
-            server.maxPlayers = server.status == 'online' ? servers.find((x: types.server) => x.id == server.id)?.maxPlayers || 0 : 0;
+            server.players = server.status == 'online' ? servers.list.find((x: types.server) => x.id == server.id)?.players || 0 : 0;
+            server.maxPlayers = server.status == 'online' ? servers.list.find((x: types.server) => x.id == server.id)?.maxPlayers || 0 : 0;
             return server;
         })
     } as unknown as types.userStats);
@@ -475,7 +468,7 @@ app.get('/stats/user/id/:id', async (req, res) => {
 app.get("/stats/user/username/:username", async (req, res) => {
     const { username } = req.params;
 
-    if(!username) return res.status(400).send({
+    if (!username) return res.status(400).send({
         type: "invalid_account",
         message: "No username was provided"
     } as types.authError);
@@ -493,7 +486,7 @@ app.get("/stats/user/username/:username", async (req, res) => {
         }
     });
 
-    if(!user) return res.status(400).send({
+    if (!user) return res.status(400).send({
         type: "invalid_account",
         message: "User does not exist"
     } as types.authError);
@@ -525,8 +518,8 @@ app.get("/stats/user/username/:username", async (req, res) => {
         },
         ownedServers: ownedServers.map((server: any) => {
             server.owner = server.owner.toString();
-            server.players = server.status == 'online' ? servers.find((x: types.server) => x.id == server.id)?.players || 0 : 0;
-            server.maxPlayers = server.status == 'online' ? servers.find((x: types.server) => x.id == server.id)?.maxPlayers || 0 : 0;
+            server.players = server.status == 'online' ? servers.list.find((x: types.server) => x.id == server.id)?.players || 0 : 0;
+            server.maxPlayers = server.status == 'online' ? servers.list.find((x: types.server) => x.id == server.id)?.maxPlayers || 0 : 0;
             return server;
         })
     } as unknown as types.userStats);
@@ -543,7 +536,7 @@ const colors = [
     '#004DCF',
     '#5300EB',
     '#E638bb',
-  
+
     '#49313e',
     '#2e7b15',
     '#33eebd',
@@ -558,12 +551,12 @@ app.post("/stats/user/username/:username/setColor", async (req, res) => {
     try {
         const { username } = req.params;
         const { color, token } = req.body;
-    
-        if(!username || color === undefined || !token) return res.status(400).send({
+
+        if (!username || color === undefined || !token) return res.status(400).send({
             type: "invalid_account",
             message: "No credentials or color was provided"
         } as types.authError);
-    
+
         let user = await prisma.users.findFirst({
             where: { username: username },
             select: {
@@ -575,27 +568,27 @@ app.post("/stats/user/username/:username/setColor", async (req, res) => {
                 premium: true
             }
         });
-    
-        if(!user) return res.status(400).send({
+
+        if (!user) return res.status(400).send({
             type: "invalid_account",
             message: "User does not exist"
         } as types.authError);
 
-        if(user.authtoken !== token) return res.status(403).send({
+        if (user.authtoken !== token) return res.status(403).send({
             type: "invalid_token",
             message: "Invalid auth token, try relogging in the settings tab"
         } as types.authError);
-    
-        if(user.premium !== 3) return res.status(403).send({
+
+        if (user.premium !== 3) return res.status(403).send({
             type: "not_premium",
             message: "Sorry, this feature is only available to patrons"
         } as types.authError);
-    
-        if(parseInt(color) > colors.length || parseInt(color) < 0) return res.status(400).send({
+
+        if (parseInt(color) > colors.length || parseInt(color) < 0) return res.status(400).send({
             type: "invalid_color",
             message: "Invalid color"
         } as types.authError);
-    
+
         await prisma.users.update({
             where: {
                 id: user.id
@@ -604,7 +597,7 @@ app.post("/stats/user/username/:username/setColor", async (req, res) => {
                 color: colors[parseInt(color)]
             }
         });
-    
+
         return res.send({
             username: user.username,
             color: colors[parseInt(color)]
@@ -615,7 +608,7 @@ app.post("/stats/user/username/:username/setColor", async (req, res) => {
             type: "internal_error",
             message: "Something went wrong while trying to set the color"
         } as types.authError);
-     }
+    }
 });
 
 const playtimeCooldowns: Map<string, number> = new Map();
@@ -624,12 +617,12 @@ app.post("/stats/user/username/:username/playtime", async (req, res) => {
     try {
         const { username } = req.params;
         const token = req.headers.authorization?.split(' ')[1];
-    
-        if(!username || !token) return res.status(400).send({
+
+        if (!username || !token) return res.status(400).send({
             type: "invalid_account",
             message: "No credentials were provided"
         } as types.authError);
-    
+
         let user = await prisma.users.findFirst({
             where: { username: username },
             select: {
@@ -641,18 +634,18 @@ app.post("/stats/user/username/:username/playtime", async (req, res) => {
                 premium: true,
             }
         });
-    
-        if(!user) return res.status(400).send({
+
+        if (!user) return res.status(400).send({
             type: "invalid_account",
             message: "User does not exist"
         } as types.authError);
 
-        if(user.authtoken !== token) return res.status(403).send({
+        if (user.authtoken !== token) return res.status(403).send({
             type: "invalid_token",
             message: "Invalid auth token, try relogging in the settings tab"
         } as types.authError);
 
-        if(playtimeCooldowns.has(username) && (Date.now() - (playtimeCooldowns.get(username) ?? 0)) < 1000 * 55) return res.status(429).send({
+        if (playtimeCooldowns.has(username) && (Date.now() - (playtimeCooldowns.get(username) ?? 0)) < 1000 * 55) return res.status(429).send({
             type: "cooldown",
             message: "Playtime requests are only allowed once per minute"
         } as types.authError);
@@ -669,7 +662,7 @@ app.post("/stats/user/username/:username/playtime", async (req, res) => {
                 }
             }
         });
-    
+
         return res.send('OK');
     } catch (error) {
         console.log(error);
@@ -677,7 +670,7 @@ app.post("/stats/user/username/:username/playtime", async (req, res) => {
             type: "internal_error",
             message: "Something went wrong while trying to set playtime"
         } as types.authError);
-     }
+    }
 });
 
 Sentry.setupExpressErrorHandler(app);
