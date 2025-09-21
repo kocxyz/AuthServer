@@ -119,7 +119,6 @@ export async function checkServers(): Promise<void> {
     newServersArray.sort((a, b) => a.id - b.id);
 
     servers.list = newServersArray;
-    console.log(`Checked ${servers.list.length} servers`);
 
     await prisma.$transaction(
         servers.list.map((server: types.server) => {
