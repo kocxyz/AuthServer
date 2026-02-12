@@ -106,7 +106,7 @@ export async function checkServers(): Promise<void> {
             server.maxPlayers = status.data.maxConnections;
         }
 
-        if (status?.data.version !== "3.2.0" && status?.data.status === "OK") server.status = "deprecated";
+        if (status?.data.version !== (process.env.ACTIVE_PROXY_VERSION || "3.2.4") && status?.data.status === "OK") server.status = "deprecated";
         else if (status?.data.status === "OK") server.status = "online";
         else server.status = "offline";
 
